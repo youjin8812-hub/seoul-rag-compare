@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Naive RAG vs Advanced RAG · 비교 데모</title>
+<style>
+  :root {
+    --bg: #EEF1EC;
+    --surface: #FFFFFF;
+    --surface-2: #F4F6F2;
+    --border: #DBE1D9;
+    --ink: #1A2420;
+    --ink-2: #5B6A61;
+    --ink-3: #8A968E;
+    --naive: #B5763B;
+    --naive-soft: #F3E7D6;
+    --advanced: #5B5FA8;
+    --advanced-soft: #E4E4F3;
+    --good: #2E7D53;
+    --danger: #A23B33;
+    --danger-soft: #F5E3E0;
+    --shadow: 0 1px 2px rgba(26,36,32,0.06), 0 4px 16px rgba(26,36,32,0.05);
+    --serif: Georgia, "Batang", "바탕", "Noto Serif KR", serif;
+    --sans: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", "Noto Sans KR", -apple-system, sans-serif;
+    --mono: "Consolas", "D2Coding", "Cascadia Mono", "SFMono-Regular", ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101513; --surface: #171E1A; --surface-2: #1D2521; --border: #2B352F;
+      --ink: #E8ECE8; --ink-2: #9BA89F; --ink-3: #6D7A72;
+      --naive: #D9A15C; --naive-soft: #2E2415;
+      --advanced: #9CA3E0; --advanced-soft: #23253A;
+      --good: #63C28D; --danger: #E28E82; --danger-soft: #2E1917;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #101513; --surface: #171E1A; --surface-2: #1D2521; --border: #2B352F;
+    --ink: #E8ECE8; --ink-2: #9BA89F; --ink-3: #6D7A72;
+    --naive: #D9A15C; --naive-soft: #2E2415;
+    --advanced: #9CA3E0; --advanced-soft: #23253A;
+    --good: #63C28D; --danger: #E28E82; --danger-soft: #2E1917;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.35);
+  }
+  :root[data-theme="light"] {
+    --bg: #EEF1EC; --surface: #FFFFFF; --surface-2: #F4F6F2; --border: #DBE1D9;
+    --ink: #1A2420; --ink-2: #5B6A61; --ink-3: #8A968E;
+    --naive: #B5763B; --naive-soft: #F3E7D6;
+    --advanced: #5B5FA8; --advanced-soft: #E4E4F3;
+    --good: #2E7D53; --danger: #A23B33; --danger-soft: #F5E3E0;
+    --shadow: 0 1px 2px rgba(26,36,32,0.06), 0 4px 16px rgba(26,36,32,0.05);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 15px; line-height: 1.6;
+  }
+  .app { max-width: 1360px; margin: 0 auto; padding: 28px 20px 70px; }
+  .topbar { margin-bottom: 22px; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--ink-3); margin: 0 0 6px;
+  }
+  h1 { font-family: var(--serif); font-size: 26px; font-weight: 600; margin: 0 0 8px; text-wrap: balance; }
+  .setup-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .setup-chip {
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink-2);
+    background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
+    padding: 4px 11px;
+  }
+
+  .query-bar {
+    display: flex; gap: 10px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 10px; box-shadow: var(--shadow); margin: 20px 0 10px;
+  }
+  .query-bar input {
+    flex: 1; border: none; background: transparent; color: var(--ink);
+    font-family: var(--sans); font-size: 15px; padding: 8px 10px; outline: none;
+  }
+  .query-bar button {
+    border: none; background: var(--ink); color: var(--bg); font-family: var(--sans);
+    font-weight: 700; font-size: 14px; padding: 10px 20px; border-radius: 10px; cursor: pointer;
+  }
+  .query-bar button:disabled { opacity: 0.5; cursor: default; }
+  .examples { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 20px; }
+  .example-chip {
+    font-size: 12.5px; color: var(--ink-2); background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px; cursor: pointer;
+  }
+  .example-chip:hover { border-color: var(--ink-3); }
+
+  .status-line { font-size: 12.5px; color: var(--ink-2); min-height: 18px; margin-bottom: 6px; font-family: var(--mono); }
+  .status-line.error { color: var(--danger); }
+
+  .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 900px) { .columns { grid-template-columns: 1fr; } }
+
+  .col-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 20px; box-shadow: var(--shadow);
+  }
+  .col-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .col-title { font-family: var(--serif); font-size: 19px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .col-title .swatch { width: 11px; height: 11px; border-radius: 3px; }
+  .col.naive .swatch { background: var(--naive); }
+  .col.advanced .swatch { background: var(--advanced); }
+  .col-desc { font-size: 12px; color: var(--ink-3); margin-bottom: 14px; }
+
+  .pipeline {
+    display: flex; align-items: center; gap: 4px; margin-bottom: 16px; flex-wrap: wrap;
+  }
+  .stage {
+    display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-family: var(--mono);
+    color: var(--ink-3); background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 999px; padding: 5px 10px; transition: all .25s ease;
+  }
+  .stage .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); }
+  .stage.active.naive { color: var(--naive); border-color: var(--naive); background: var(--naive-soft); }
+  .stage.active.naive .dot { background: var(--naive); }
+  .stage.active.advanced { color: var(--advanced); border-color: var(--advanced); background: var(--advanced-soft); }
+  .stage.active.advanced .dot { background: var(--advanced); }
+  .stage-arrow { color: var(--ink-3); font-size: 11px; }
+
+  .section-label {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-3); margin: 14px 0 8px;
+  }
+
+  .chunk-card {
+    border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px;
+    background: var(--surface-2);
+  }
+  .chunk-card.muted { opacity: 0.55; }
+  .chunk-card.promoted { border-color: var(--advanced); }
+  .chunk-head { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; font-weight: 700; margin-bottom: 4px; }
+  .chunk-sub { font-size: 11px; color: var(--ink-3); margin-bottom: 6px; font-family: var(--mono); }
+  .score-bar-track { background: var(--border); border-radius: 4px; height: 6px; overflow: hidden; margin-bottom: 6px; }
+  .score-bar-fill { height: 100%; border-radius: 4px; }
+  .col.naive .score-bar-fill { background: var(--naive); }
+  .col.advanced .score-bar-fill { background: var(--advanced); }
+  .chunk-preview { font-size: 12.5px; color: var(--ink-2); }
+  .rerank-delta { font-family: var(--mono); font-size: 10.5px; }
+  .rerank-delta.up { color: var(--good); }
+
+  .answer-card {
+    border-radius: 12px; padding: 14px 16px; margin-top: 4px; font-size: 14px;
+    border: 1px solid var(--border);
+  }
+  .col.naive .answer-card { background: var(--naive-soft); }
+  .col.advanced .answer-card { background: var(--advanced-soft); }
+  .answer-card strong { font-weight: 700; }
+
+  .timing-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; font-family: var(--mono); font-size: 11px; color: var(--ink-2); }
+  .timing-row span b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  .summary-bar {
+    display: flex; gap: 18px; align-items: center; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 14px 18px; margin-top: 18px; box-shadow: var(--shadow); flex-wrap: wrap;
+  }
+  .summary-item { font-size: 12.5px; color: var(--ink-2); }
+  .summary-item b { font-family: var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  .empty-state { text-align: center; color: var(--ink-3); font-size: 13.5px; padding: 60px 20px; }
+  .spinner {
+    width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border);
+    border-top-color: var(--ink); display: inline-block; animation: spin .8s linear infinite; margin-right: 6px;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <p class="eyebrow">RAG 파이프라인 비교 데모</p>
+    <h1>Naive RAG vs Advanced RAG (Rerank)</h1>
+    <div class="setup-row">
+      <span class="setup-chip">DB: Supabase pgvector · documents_test</span>
+      <span class="setup-chip">Embedding: openai/text-embedding-3-small</span>
+      <span class="setup-chip">Rerank: Cohere rerank-v3.5</span>
+      <span class="setup-chip">Chat: openai/gpt-5-mini</span>
+    </div>
+  </div>
+
+  <div class="query-bar">
+    <input id="question-input" type="text" placeholder="예: 전세사기 위험을 미리 탐지하는 방법은?" autocomplete="off" />
+    <button id="run-btn">비교 실행</button>
+  </div>
+  <div class="examples" id="examples"></div>
+  <div class="status-line" id="status-line"></div>
+
+  <div id="result-area">
+    <div class="empty-state">질문을 입력하고 "비교 실행"을 누르면 두 파이프라인이 동시에 실행됩니다.</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var EXAMPLES = [
+    "전세사기 위험을 미리 탐지하는 방법은?",
+    "DDP 일대 분석에는 어떤 데이터를 쓰나요?",
+    "청년 관련 분석 과제에는 어떤 것들이 있나요?",
+    "폭염 대응시설 입지 분석은 어떻게 하나요?"
+  ];
+  var exWrap = document.getElementById("examples");
+  EXAMPLES.forEach(function (q) {
+    var chip = document.createElement("span");
+    chip.className = "example-chip";
+    chip.textContent = q;
+    chip.onclick = function () { document.getElementById("question-input").value = q; };
+    exWrap.appendChild(chip);
+  });
+
+  var STAGES = {
+    naive: [["embedding_ms", "질문 임베딩"], ["vector_search_ms", "벡터 검색 (Top-3)"], ["generation_ms", "답변 생성"]],
+    advanced: [["embedding_ms", "질문 임베딩"], ["vector_search_ms", "벡터 검색 (Top-10)"], ["rerank_ms", "Cohere Rerank"], ["generation_ms", "답변 생성 (Top-3)"]]
+  };
+
+  function el(tag, cls) { var e = document.createElement(tag); if (cls) e.className = cls; return e; }
+
+  function renderPipeline(method) {
+    var wrap = el("div", "pipeline");
+    STAGES[method].forEach(function (s, i) {
+      if (i > 0) {
+        var arrow = el("span", "stage-arrow");
+        arrow.textContent = "→";
+        wrap.appendChild(arrow);
+      }
+      var stage = el("span", "stage");
+      stage.dataset.key = s[0];
+      var dot = el("span", "dot");
+      stage.appendChild(dot);
+      stage.appendChild(document.createTextNode(s[1]));
+      wrap.appendChild(stage);
+    });
+    return wrap;
+  }
+
+  function activateStages(container, method, timings) {
+    var stages = container.querySelectorAll(".stage");
+    var delay = 0;
+    stages.forEach(function (st) {
+      var key = st.dataset.key;
+      var dur = (timings && timings[key]) || 120;
+      setTimeout(function () { st.classList.add("active", method); }, delay);
+      delay += Math.min(dur, 500) * 0.35 + 90;
+    });
+  }
+
+  function scoreBar(method, score) {
+    var track = el("div", "score-bar-track");
+    var fill = el("div", "score-bar-fill");
+    fill.style.width = Math.max(2, Math.round((score || 0) * 100)) + "%";
+    track.appendChild(fill);
+    return track;
+  }
+
+  function renderChunkCard(method, chunk, opts) {
+    opts = opts || {};
+    var card = el("div", "chunk-card" + (opts.muted ? " muted" : "") + (opts.promoted ? " promoted" : ""));
+    var head = el("div", "chunk-head");
+    var left = document.createElement("span");
+    left.textContent = (chunk.project_name || "문서 개요") ;
+    head.appendChild(left);
+    var scoreLabel = opts.scoreLabel != null ? opts.scoreLabel : (chunk.similarity != null ? chunk.similarity.toFixed(3) : "");
+    var right = document.createElement("span");
+    right.className = "rerank-delta" + (opts.up ? " up" : "");
+    right.textContent = scoreLabel;
+    head.appendChild(right);
+    card.appendChild(head);
+    var sub = el("div", "chunk-sub");
+    sub.textContent = (chunk.section_label || "") + (chunk.task_no ? " · 과제 " + chunk.task_no : "");
+    card.appendChild(sub);
+    card.appendChild(scoreBar(method, opts.barScore != null ? opts.barScore : chunk.similarity));
+    var preview = (chunk.content_plain || chunk.content || "").replace(/\n/g, " ");
+    if (preview.length > 140) preview = preview.slice(0, 140) + "…";
+    var p = el("div", "chunk-preview");
+    p.textContent = preview;
+    card.appendChild(p);
+    return card;
+  }
+
+  function formatAnswer(text) {
+    var escaped = document.createElement("div");
+    escaped.textContent = text || "";
+    var html = escaped.innerHTML
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\n/g, "<br>");
+    return html;
+  }
+
+  function renderColumn(method, label, desc, data) {
+    var card = el("div", "col-card col " + method);
+    var head = el("div", "col-head");
+    var title = el("div", "col-title");
+    var sw = el("span", "swatch");
+    title.appendChild(sw);
+    title.appendChild(document.createTextNode(label));
+    head.appendChild(title);
+    card.appendChild(head);
+    var d = el("div", "col-desc");
+    d.textContent = desc;
+    card.appendChild(d);
+
+    var pipeline = renderPipeline(method);
+    card.appendChild(pipeline);
+
+    if (!data) {
+      var loading = el("div", "chunk-preview");
+      loading.innerHTML = '<span class="spinner"></span> 처리 중…';
+      card.appendChild(loading);
+      return card;
+    }
+
+    if (method === "advanced") {
+      card.appendChild(el("div", "section-label")).textContent = "1차 후보 (벡터 검색 Top-" + data.candidates.length + ")";
+      var promotedIds = data.retrieved.map(function (r) { return r.chunk_id; });
+      data.candidates.forEach(function (c) {
+        var promoted = promotedIds.indexOf(c.chunk_id) !== -1;
+        card.appendChild(renderChunkCard(method, c, { muted: !promoted, promoted: promoted, scoreLabel: c.similarity.toFixed(3) }));
+      });
+      var lbl2 = el("div", "section-label");
+      lbl2.textContent = "Rerank 후 최종 Top-" + data.retrieved.length;
+      card.appendChild(lbl2);
+      data.retrieved.forEach(function (c) {
+        card.appendChild(renderChunkCard(method, c, { up: true, scoreLabel: c.rerank_score.toFixed(3), barScore: c.rerank_score }));
+      });
+    } else {
+      var lbl = el("div", "section-label");
+      lbl.textContent = "검색 결과 (벡터 유사도 Top-" + data.retrieved.length + ")";
+      card.appendChild(lbl);
+      data.retrieved.forEach(function (c) {
+        card.appendChild(renderChunkCard(method, c, {}));
+      });
+    }
+
+    var ansLbl = el("div", "section-label");
+    ansLbl.textContent = "생성된 답변";
+    card.appendChild(ansLbl);
+    var ans = el("div", "answer-card");
+    ans.innerHTML = formatAnswer(data.answer);
+    card.appendChild(ans);
+
+    var timing = el("div", "timing-row");
+    Object.keys(data.timings).forEach(function (k) {
+      var span = document.createElement("span");
+      var b = document.createElement("b");
+      b.textContent = data.timings[k] + "ms";
+      span.appendChild(document.createTextNode(k.replace("_ms", "") + " "));
+      span.appendChild(b);
+      timing.appendChild(span);
+    });
+    card.appendChild(timing);
+
+    setTimeout(function () { activateStages(pipeline, method, data.timings); }, 30);
+    return card;
+  }
+
+  function renderSummary(naive, advanced) {
+    var bar = el("div", "summary-bar");
+    function item(label, value) {
+      var s = el("span", "summary-item");
+      var b = document.createElement("b");
+      b.textContent = value;
+      s.appendChild(document.createTextNode(label + " "));
+      s.appendChild(b);
+      return s;
+    }
+    bar.appendChild(item("Naive 총 소요", naive.timings.total_ms + "ms"));
+    bar.appendChild(item("Advanced 총 소요", advanced.timings.total_ms + "ms"));
+    bar.appendChild(item("Rerank 단계 추가 비용", advanced.timings.rerank_ms + "ms"));
+    var naiveIds = naive.retrieved.map(function (r) { return r.chunk_id; }).join(",");
+    var advIds = advanced.retrieved.map(function (r) { return r.chunk_id; }).join(",");
+    bar.appendChild(item("최종 근거 동일 여부", naiveIds === advIds ? "동일" : "다름"));
+    return bar;
+  }
+
+  function run() {
+    var input = document.getElementById("question-input");
+    var question = input.value.trim();
+    var statusLine = document.getElementById("status-line");
+    var resultArea = document.getElementById("result-area");
+    var runBtn = document.getElementById("run-btn");
+    if (!question) { statusLine.textContent = "질문을 입력해주세요."; statusLine.className = "status-line error"; return; }
+
+    runBtn.disabled = true;
+    statusLine.className = "status-line";
+    statusLine.textContent = "두 파이프라인을 동시에 실행 중…";
+
+    resultArea.innerHTML = "";
+    var cols = el("div", "columns");
+    cols.appendChild(renderColumn("naive", "Naive RAG", "질문 임베딩 → 벡터 유사도 Top-3 → 바로 답변 생성", null));
+    cols.appendChild(renderColumn("advanced", "Advanced RAG", "벡터 검색 Top-10 → Cohere Rerank → 상위 3개로 답변 생성", null));
+    resultArea.appendChild(cols);
+
+    var t0 = performance.now();
+    fetch("/api/compare", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: question })
+    }).then(function (res) {
+      return res.json().then(function (body) { return { ok: res.ok, body: body }; });
+    }).then(function (r) {
+      runBtn.disabled = false;
+      if (!r.ok) {
+        statusLine.className = "status-line error";
+        statusLine.textContent = "오류: " + (r.body.error || "알 수 없는 오류");
+        return;
+      }
+      var elapsed = Math.round(performance.now() - t0);
+      statusLine.textContent = "완료 (왕복 " + elapsed + "ms)";
+      resultArea.innerHTML = "";
+      var cols2 = el("div", "columns");
+      cols2.appendChild(renderColumn("naive", "Naive RAG", "질문 임베딩 → 벡터 유사도 Top-3 → 바로 답변 생성", r.body.naive));
+      cols2.appendChild(renderColumn("advanced", "Advanced RAG", "벡터 검색 Top-10 → Cohere Rerank → 상위 3개로 답변 생성", r.body.advanced));
+      resultArea.appendChild(cols2);
+      resultArea.appendChild(renderSummary(r.body.naive, r.body.advanced));
+    }).catch(function (err) {
+      runBtn.disabled = false;
+      statusLine.className = "status-line error";
+      statusLine.textContent = "요청 실패: " + err;
+    });
+  }
+
+  document.getElementById("run-btn").addEventListener("click", run);
+  document.getElementById("question-input").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") run();
+  });
+})();
+</script>
+</body>
+</html>

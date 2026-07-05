@@ -1,0 +1,27 @@
+{
+  "source_file": "page_01_10.md",
+  "document_title": "2026년 시정 핵심사업 데이터 분석 컨설팅 제안(안)",
+  "total_tasks_in_document": 10,
+  "requested_task_range": [
+    1,
+    10
+  ],
+  "processed_tasks": 10,
+  "expected_tasks": 10,
+  "parent_count": 10,
+  "child_count": 40,
+  "overview_chunk_count": 1,
+  "embedding_chunk_count": 41,
+  "token_method": "korean_char_fallback",
+  "target_tokens": 420,
+  "max_tokens": 600,
+  "overlap_tokens": 50,
+  "page_range": {
+    "page_range": "1-10",
+    "source_page_start": 1,
+    "source_page_end": 10
+  },
+  "out_of_range_task_numbers_in_input": [],
+  "validation_errors": [],
+  "warnings": []
+}
