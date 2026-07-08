@@ -78,9 +78,13 @@ def vector_search(embedding, match_count):
     results = []
     for r in rows:
         md = r.get("metadata") or {}
+        if md.get("chunk_type") == "parent":
+            # Parent는 벡터 검색 대상이 아니라 parent_id로 직접 조회되는 확장용 청크.
+            continue
         results.append(
             {
                 "chunk_id": md.get("chunk_id"),
+                "parent_id": md.get("parent_id"),
                 "project_name": md.get("project_name"),
                 "section_label": md.get("section_label"),
                 "chunk_type": md.get("chunk_type"),
@@ -91,6 +95,39 @@ def vector_search(embedding, match_count):
             }
         )
     return results
+
+
+def fetch_parent_chunks(parent_ids):
+    unique_ids = sorted({pid for pid in parent_ids if pid})
+    if not unique_ids:
+        return {}
+    resp = requests.get(
+        f"{SUPABASE_URL}/rest/v1/{TABLE_NAME}",
+        headers={
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+        },
+        params={
+            "select": "content,metadata",
+            "metadata->>chunk_id": f"in.({','.join(unique_ids)})",
+        },
+        timeout=30,
+    )
+    resp.raise_for_status()
+    parents = {}
+    for row in resp.json():
+        md = row.get("metadata") or {}
+        chunk_id = md.get("chunk_id")
+        if chunk_id:
+            parents[chunk_id] = row.get("content")
+    return parents
+
+
+def expand_with_parents(chunks):
+    parent_map = fetch_parent_chunks(c.get("parent_id") for c in chunks)
+    for c in chunks:
+        c["parent_content"] = parent_map.get(c.get("parent_id"))
+    return chunks
 
 
 def cohere_rerank(query, candidates, top_n):
@@ -116,7 +153,8 @@ def cohere_rerank(query, candidates, top_n):
 
 def chat_completion(question, context_chunks):
     context_text = "\n\n".join(
-        f"[근거 {i+1}] ({c.get('project_name') or '문서 개요'} · {c.get('section_label') or ''})\n{c['content']}"
+        f"[근거 {i+1}] ({c.get('project_name') or '문서 개요'} · {c.get('section_label') or ''})\n"
+        f"{c.get('parent_content') or c['content']}"
         for i, c in enumerate(context_chunks)
     )
     system_prompt = (
@@ -158,6 +196,10 @@ def naive_rag(question, top_k=3):
     timings["vector_search_ms"] = round((time.perf_counter() - t0) * 1000, 1)
 
     t0 = time.perf_counter()
+    expand_with_parents(retrieved)
+    timings["parent_fetch_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+
+    t0 = time.perf_counter()
     answer, usage = chat_completion(question, retrieved)
     timings["generation_ms"] = round((time.perf_counter() - t0) * 1000, 1)
 
@@ -187,6 +229,10 @@ def advanced_rag(question, candidate_k=10, top_k=3):
     t0 = time.perf_counter()
     reranked = cohere_rerank(question, candidates, top_k)
     timings["rerank_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+
+    t0 = time.perf_counter()
+    expand_with_parents(reranked)
+    timings["parent_fetch_ms"] = round((time.perf_counter() - t0) * 1000, 1)
 
     t0 = time.perf_counter()
     answer, usage = chat_completion(question, reranked)

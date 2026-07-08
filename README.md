@@ -136,6 +136,7 @@ cp .env.example .env
 ### 4. 청크 임베딩 적재
 
 이미 생성된 샘플 청크(`data/chunks_page_01_10/all_embedding_chunks.jsonl`, 41건: Child 40 + Overview 1)를 그대로 적재합니다.
+같은 디렉터리의 `parents.jsonl`(Parent 10건)이 있으면 자동으로 함께 적재되며, Parent는 벡터 검색 대상이 아니므로 임베딩 없이(`embedding = null`) `chunk_type="parent"`로 저장됩니다.
 
 ```bash
 python scripts/load_to_supabase.py data/chunks_page_01_10/all_embedding_chunks.jsonl \
@@ -169,6 +170,10 @@ python scripts/rag_compare_server.py --port 5000
 - 모든 Child의 `embedding_text`에 문서명·분야·분석과제명·섹션 등 contextual header를 부여
 - HWPX→Markdown 변환 과정에서 생긴 이미지 링크, 표 구분선, 중복 셀, `<br>` 태그 등을 정리하는 전처리 포함
 - 실행마다 과제 수·중복·필수 섹션 누락·이미지 잔존 등을 자동 검증해 `chunk_report.json`에 기록 (`--strict` 시 오류가 있으면 종료 코드 1)
+
+### 검색 단계의 Parent 확장 (small-to-big)
+
+벡터 검색은 정밀도가 높은 **Child**에서만 수행하고(Parent는 `chunk_type="parent"`로 표시되어 검색 후보에서 제외), 매칭된 Child의 `parent_id`로 Parent 청크를 조회해 실제 답변 생성 컨텍스트로는 Parent의 전체 본문을 사용합니다 (`rag_lib.fetch_parent_chunks` / `expand_with_parents`). 이렇게 하면 검색은 좁고 정확하게, 생성 근거는 넓고 완전하게 가져갈 수 있습니다.
 
 ## 기술 스택
 

@@ -613,6 +613,8 @@ def build_task_chunks(
         "catalog_project_name": catalog_project_name,
         "related_business": block.related_business,
         "departments": departments,
+        "chunk_type": "parent",
+        "section_label": "분석과제 전체",
         "content": parent_content,
         "token_count": count_tokens(parent_content),
         "source_start_line": block.start_line + 1,
