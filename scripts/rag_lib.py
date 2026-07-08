@@ -10,6 +10,7 @@ Naive RAG / Advanced RAG(Rerank) 공통 파이프라인.
 자격증명은 환경변수로만 받는다: SUPABASE_URL, SUPABASE_KEY, OPENROUTER_API_KEY, COHERE_API_KEY
 """
 
+import json
 import os
 import time
 import requests
@@ -34,6 +35,66 @@ MATCH_FN = "match_documents_test"
 
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 COHERE_BASE = "https://api.cohere.com/v2"
+
+_DEFAULT_PARENTS_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "data", "chunks_page_01_10", "parents.jsonl"
+)
+PARENTS_JSONL_PATH = os.environ.get("PARENTS_JSONL_PATH", _DEFAULT_PARENTS_PATH)
+
+
+def _load_parents(path):
+    parents = {}
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    rec = json.loads(line)
+                    parents[rec["id"]] = rec
+    return parents
+
+
+PARENTS_BY_ID = _load_parents(PARENTS_JSONL_PATH)
+
+
+def expand_to_parent_context(chunks):
+    """검색/재순위화된 Child(또는 Overview) 청크를 parent_id 기준으로 중복 없이
+    전체 Parent 문맥으로 확장한다. Parent가 없는 청크(Overview 등)는 원본 내용을 그대로 사용한다.
+    여러 Child가 같은 Parent를 가리키면 Parent 문맥은 한 번만 포함된다."""
+    seen_parents = set()
+    blocks = []
+    for c in chunks:
+        pid = c.get("parent_id")
+        if pid:
+            if pid in seen_parents:
+                continue
+            seen_parents.add(pid)
+            parent = PARENTS_BY_ID.get(pid)
+            if parent:
+                blocks.append(
+                    {
+                        "source": "parent",
+                        "parent_id": pid,
+                        "chunk_id": c.get("chunk_id"),
+                        "project_name": parent.get("project_name"),
+                        "section_label": "Parent 전체 문맥",
+                        "task_no": parent.get("task_no"),
+                        "content": parent.get("content"),
+                    }
+                )
+                continue
+        blocks.append(
+            {
+                "source": "chunk",
+                "parent_id": pid,
+                "chunk_id": c.get("chunk_id"),
+                "project_name": c.get("project_name"),
+                "section_label": c.get("section_label"),
+                "task_no": c.get("task_no"),
+                "content": c["content"],
+            }
+        )
+    return blocks
 
 
 def _require_config():
@@ -81,6 +142,7 @@ def vector_search(embedding, match_count):
         results.append(
             {
                 "chunk_id": md.get("chunk_id"),
+                "parent_id": md.get("parent_id"),
                 "project_name": md.get("project_name"),
                 "section_label": md.get("section_label"),
                 "chunk_type": md.get("chunk_type"),
@@ -158,7 +220,11 @@ def naive_rag(question, top_k=3):
     timings["vector_search_ms"] = round((time.perf_counter() - t0) * 1000, 1)
 
     t0 = time.perf_counter()
-    answer, usage = chat_completion(question, retrieved)
+    context = expand_to_parent_context(retrieved)
+    timings["parent_expand_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+
+    t0 = time.perf_counter()
+    answer, usage = chat_completion(question, context)
     timings["generation_ms"] = round((time.perf_counter() - t0) * 1000, 1)
 
     timings["total_ms"] = round(sum(timings.values()), 1)
@@ -166,6 +232,7 @@ def naive_rag(question, top_k=3):
         "method": "naive",
         "question": question,
         "retrieved": retrieved,
+        "context_used": context,
         "answer": answer,
         "usage": usage,
         "timings": timings,
@@ -189,7 +256,11 @@ def advanced_rag(question, candidate_k=10, top_k=3):
     timings["rerank_ms"] = round((time.perf_counter() - t0) * 1000, 1)
 
     t0 = time.perf_counter()
-    answer, usage = chat_completion(question, reranked)
+    context = expand_to_parent_context(reranked)
+    timings["parent_expand_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+
+    t0 = time.perf_counter()
+    answer, usage = chat_completion(question, context)
     timings["generation_ms"] = round((time.perf_counter() - t0) * 1000, 1)
 
     timings["total_ms"] = round(sum(timings.values()), 1)
@@ -198,6 +269,7 @@ def advanced_rag(question, candidate_k=10, top_k=3):
         "question": question,
         "candidates": candidates,
         "retrieved": reranked,
+        "context_used": context,
         "answer": answer,
         "usage": usage,
         "timings": timings,

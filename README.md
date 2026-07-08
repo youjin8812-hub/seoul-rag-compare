@@ -30,8 +30,8 @@ flowchart LR
     B --> C["임베딩 생성\nopenai/text-embedding-3-small"]
     C --> D[("Supabase pgvector\ndocuments_test")]
     D --> E{"질문 입력"}
-    E --> F["Naive RAG\n벡터검색 Top-3 → 답변 생성"]
-    E --> G["Advanced RAG\n벡터검색 Top-10 → Cohere Rerank → Top-3 → 답변 생성"]
+    E --> F["Naive RAG\n벡터검색 Top-3 → Parent 확장 → 답변 생성"]
+    E --> G["Advanced RAG\n벡터검색 Top-10 → Cohere Rerank → Top-3 → Parent 확장 → 답변 생성"]
     F --> H["비교 웹 UI\n(rag_compare.html)"]
     G --> H
 ```
@@ -43,8 +43,11 @@ flowchart LR
 | 임베딩 | `openai/text-embedding-3-small` | `openai/text-embedding-3-small` |
 | 1차 검색 | 벡터 유사도 Top-3 | 벡터 유사도 Top-10 |
 | 재순위화 | 없음 | Cohere `rerank-v3.5` → Top-3 |
+| Parent 문맥 확장 | 검색된 Child의 `parent_id`로 전체 Parent 본문을 조회해 답변 생성에 사용 (중복 Parent는 1회만) | 동일 |
 | 답변 생성 | `openai/gpt-5-mini` | `openai/gpt-5-mini` |
 | 특징 | 빠르지만 유사도 상위가 항상 정답 근거는 아님 | 후보를 넓게 본 뒤 질의 적합도로 재정렬해 근거 품질을 보정 |
+
+검색 자체는 정밀도가 높은 Child 청크 단위로 수행하되, 최종 답변 생성 시에는 각 Child가 속한 **Parent(분석과제 전체 본문)** 를 조회해 문맥을 넓혀서 사용합니다(Parent Document Retriever 패턴). 여러 Child가 같은 Parent에 속하면 중복 없이 한 번만 포함됩니다.
 
 실제로 같은 질문에 대해 두 방식이 채택하는 최종 근거(Top-3)가 달라지는 경우를 화면에서 바로 확인할 수 있습니다.
 

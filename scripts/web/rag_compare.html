@@ -142,6 +142,12 @@
   .chunk-preview { font-size: 12.5px; color: var(--ink-2); }
   .rerank-delta { font-family: var(--mono); font-size: 10.5px; }
   .rerank-delta.up { color: var(--good); }
+  .context-card { background: var(--surface); }
+  .context-badge {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em;
+    color: var(--ink-3); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px;
+  }
+  .context-badge.parent { color: var(--good); border-color: var(--good); }
 
   .answer-card {
     border-radius: 12px; padding: 14px 16px; margin-top: 4px; font-size: 14px;
@@ -217,8 +223,8 @@
   });
 
   var STAGES = {
-    naive: [["embedding_ms", "질문 임베딩"], ["vector_search_ms", "벡터 검색 (Top-3)"], ["generation_ms", "답변 생성"]],
-    advanced: [["embedding_ms", "질문 임베딩"], ["vector_search_ms", "벡터 검색 (Top-10)"], ["rerank_ms", "Cohere Rerank"], ["generation_ms", "답변 생성 (Top-3)"]]
+    naive: [["embedding_ms", "질문 임베딩"], ["vector_search_ms", "벡터 검색 (Top-3)"], ["parent_expand_ms", "Parent 문맥 확장"], ["generation_ms", "답변 생성"]],
+    advanced: [["embedding_ms", "질문 임베딩"], ["vector_search_ms", "벡터 검색 (Top-10)"], ["rerank_ms", "Cohere Rerank"], ["parent_expand_ms", "Parent 문맥 확장"], ["generation_ms", "답변 생성 (Top-3)"]]
   };
 
   function el(tag, cls) { var e = document.createElement(tag); if (cls) e.className = cls; return e; }
@@ -285,6 +291,27 @@
     return card;
   }
 
+  function renderContextCard(block) {
+    var card = el("div", "chunk-card context-card" + (block.source === "parent" ? " promoted" : ""));
+    var head = el("div", "chunk-head");
+    var left = document.createElement("span");
+    left.textContent = (block.project_name || "문서 개요");
+    head.appendChild(left);
+    var badge = el("span", "context-badge" + (block.source === "parent" ? " parent" : ""));
+    badge.textContent = block.source === "parent" ? "Parent 전체" : "청크 원문";
+    head.appendChild(badge);
+    card.appendChild(head);
+    var sub = el("div", "chunk-sub");
+    sub.textContent = (block.section_label || "") + (block.task_no ? " · 과제 " + block.task_no : "");
+    card.appendChild(sub);
+    var preview = (block.content || "").replace(/\n/g, " ");
+    if (preview.length > 220) preview = preview.slice(0, 220) + "…";
+    var p = el("div", "chunk-preview");
+    p.textContent = preview;
+    card.appendChild(p);
+    return card;
+  }
+
   function formatAnswer(text) {
     var escaped = document.createElement("div");
     escaped.textContent = text || "";
@@ -338,6 +365,13 @@
         card.appendChild(renderChunkCard(method, c, {}));
       });
     }
+
+    var ctxLbl = el("div", "section-label");
+    ctxLbl.textContent = "생성에 사용된 문맥 (Parent 확장, 중복 제거 " + data.context_used.length + "건)";
+    card.appendChild(ctxLbl);
+    data.context_used.forEach(function (block) {
+      card.appendChild(renderContextCard(block));
+    });
 
     var ansLbl = el("div", "section-label");
     ansLbl.textContent = "생성된 답변";
